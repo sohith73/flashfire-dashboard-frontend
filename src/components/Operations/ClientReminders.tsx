@@ -267,6 +267,8 @@ function humanReason(reason: string): string {
   const map: Record<string, string> = {
     no_activity: "no activity in the period",
     nothing_added: "no new roles added today - this report is never sent empty",
+    below_minimum: "fewer than 5 roles added or 5 applied today, so nothing was sent",
+    sunday_hold: "no client emails on Sundays (IST); it goes out on Monday",
     client_is_active: "client is active",
     no_channel: "no channel enabled",
     no_destination: "no destination address",
