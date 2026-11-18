@@ -8,7 +8,7 @@ import { Education } from "./components/Education";
 import { ResumePreview } from "./components/ResumePreview";
 import { ChangesComparison } from "./components/ChangesComparison";
 import { DraggableSections } from "./components/DraggableSections";
-import { RotateCcw, Save, Check, LucideSaveAll, Plus } from "lucide-react";
+import { RotateCcw, Save, Check, LucideSaveAll, Plus, Copy, ClipboardPaste } from "lucide-react";
 import { useResumeStore } from "./store/useResumeStore";
 import { useResumeUnlockStore } from "./store/resumeStore";
 import { initialData } from "./data/initialData";
@@ -31,6 +31,13 @@ import { useJobsSessionStore } from "../../state_management/JobsSessionStore";
 import "./index.css"; //
 import { convertDoubleDashToHyphen, convertDoubleHyphenToHyphen } from "../../utils/generatehypesn";
 import { buildResumeOptimizationInstructionPrompt } from "../../utils/resumeOptimizationPrompt";
+import ResumeJsonModal from "./components/ResumeJsonModal";
+import {
+    buildResumeExport,
+    type ParsedResumeImport,
+    type ResumeSnapshot,
+} from "./utils/resumeJson";
+import { copyTextToClipboard } from "./utils/clipboard";
 
 // Type definitions remain the same
 interface WorkExperienceItem {
@@ -1668,11 +1675,19 @@ function App() {
         // setCurrentView("editor");
     };
     // --- Save ---
-    const handleSave = async () => {
-        try {
+    /**
+     * Saves a resume to the backend. With no argument it saves what the editor
+     * holds right now (the Save Resume button). Pass a snapshot to save data
+     * that has not reached React state yet (Paste JSON). Throws on failure.
+     * Returns the saved resume id.
+     */
+    const saveResume = async (snapshot?: ResumeSnapshot): Promise<string | null> => {
             setIsSaved(true);
 
-            const { name } = resumeData.personalInfo;
+            const saveResumeData = snapshot ? snapshot.data : resumeData;
+            const saveSectionOrder = snapshot ? snapshot.sectionOrder : sectionOrder;
+            const saveSectionTitles = snapshot ? snapshot.sectionTitles : sectionTitles;
+            const { name } = saveResumeData.personalInfo;
             const safeName = name
                 ? name.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "")
                 : "user";
@@ -1680,7 +1695,7 @@ function App() {
             const apiUrl =
                 import.meta.env.VITE_API_URL || "https://resume-maker-backend-lf5z.onrender.com";
             
-            const finalSectionOrder = [...sectionOrder];
+            const finalSectionOrder = [...saveSectionOrder];
             if (!finalSectionOrder.includes("publications")) {
                 finalSectionOrder.push("publications");
             }
@@ -1691,17 +1706,27 @@ function App() {
                 finalSectionOrder.push("therapeuticAreas");
             }
 
-            const hasPublications = resumeData.publications &&
-                resumeData.publications.length > 0 &&
-                resumeData.publications.some(pub => pub.details && pub.details.trim() !== "");
-            const finalShowPublications = versionV === 2 ? (hasPublications || showPublications) : showPublications;
+            const saveChecks = snapshot
+                ? snapshot.checkboxStates
+                : {
+                    showSummary,
+                    showProjects,
+                    showLeadership,
+                    showPublications,
+                    showCertifications,
+                    showTherapeuticAreas,
+                };
+            const hasPublications = saveResumeData.publications &&
+                saveResumeData.publications.length > 0 &&
+                saveResumeData.publications.some(pub => pub.details && pub.details.trim() !== "");
+            const finalShowPublications = versionV === 2 ? (hasPublications || saveChecks.showPublications) : saveChecks.showPublications;
             // Certifications carry no "details" field — a row counts as real once
             // it has a title or an issuer. Date stays optional and is never used
             // to decide whether the section shows.
-            const certList = ((resumeData as any).certifications || []) as CertificationItem[];
+            const certList = ((saveResumeData as any).certifications || []) as CertificationItem[];
             const hasCertifications = certList.length > 0 &&
                 certList.some(c => (c.title && c.title.trim() !== "") || (c.issuer && c.issuer.trim() !== ""));
-            const finalShowCertifications = hasCertifications || showCertifications;
+            const finalShowCertifications = hasCertifications || saveChecks.showCertifications;
 
             const nameChanged = loadedName !== null && name.trim() !== loadedName.trim();
             const effectiveResumeId = nameChanged ? null : (resume_id || null);
@@ -1709,20 +1734,20 @@ function App() {
             const saveData = {
                 resume_id: effectiveResumeId,
                 filename,
-                data: resumeData,
+                data: saveResumeData,
                 checkboxStates: {
-                    showSummary,
-                    showProjects,
-                    showLeadership,
+                    showSummary: saveChecks.showSummary,
+                    showProjects: saveChecks.showProjects,
+                    showLeadership: saveChecks.showLeadership,
                     showPublications: finalShowPublications,
                     showCertifications: finalShowCertifications,
-                    showTherapeuticAreas,
+                    showTherapeuticAreas: saveChecks.showTherapeuticAreas,
                 },
                 sectionOrder: finalSectionOrder,
                 // Operator-renamed section headers. Sparse map keyed by
                 // section id. Always sent; older backends ignore unknown
                 // fields, so this is forward-compatible.
-                sectionTitles: sectionTitles || {},
+                sectionTitles: saveSectionTitles || {},
                 createdBy: userRole === "admin" ? "admin" : "user",
             };
             console.log("Saving resume with data:", saveData);
@@ -1752,10 +1777,75 @@ function App() {
             setTimeout(() => {
                 setIsSaved(false);
             }, 2000);
+            return result.resume_id || null;
+    };
+
+    // Save Resume button: same behaviour as before, errors shown as an alert.
+    const handleSave = async () => {
+        try {
+            await saveResume();
         } catch (error) {
             console.error("Error saving resume:", error);
             alert("Error saving resume. Please try again.");
         }
+    };
+
+    // --- Copy / Paste JSON ---
+    const [showJsonModal, setShowJsonModal] = useState(false);
+    const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+    const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const currentCheckboxStates = {
+        showSummary,
+        showProjects,
+        showLeadership,
+        showPublications,
+        showCertifications,
+        showTherapeuticAreas,
+    };
+
+    const handleCopyJson = async () => {
+        const text = buildResumeExport(
+            {
+                data: resumeData,
+                checkboxStates: currentCheckboxStates,
+                sectionOrder,
+                sectionTitles: sectionTitles || {},
+            },
+            resume_id || null
+        );
+        const ok = await copyTextToClipboard(text);
+        setCopyState(ok ? "copied" : "error");
+        if (copyResetRef.current) clearTimeout(copyResetRef.current);
+        copyResetRef.current = setTimeout(() => setCopyState("idle"), ok ? 2000 : 4000);
+    };
+
+    useEffect(() => () => {
+        if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    }, []);
+
+    // Paste JSON: save first so a failed save leaves the editor untouched, then
+    // load the same fields a resume selection loads.
+    const handlePasteJsonSave = async (value: ParsedResumeImport) => {
+        let savedId: string | null;
+        try {
+            savedId = await saveResume(value);
+        } catch (error) {
+            setIsSaved(false);
+            console.error("Error saving pasted resume:", error);
+            throw error instanceof Error ? error : new Error("Failed to save resume");
+        }
+        const loaded = {
+            ...value.data,
+            checkboxStates: value.checkboxStates,
+            sectionOrder: value.sectionOrder,
+            sectionTitles: value.sectionTitles,
+        } as ResumeDataType & { checkboxStates?: ResumeSnapshot["checkboxStates"]; sectionOrder?: string[] };
+        setResumeData(loaded);
+        setBaseResume(loaded);
+        checkLoadedResumeData(loaded);
+        const idToUse = savedId || resume_id;
+        if (idToUse) setLastSelectedResume(loaded, idToUse);
     };
 
     const handleV1Resume = async () => {
@@ -2708,6 +2798,36 @@ function App() {
                                         <Plus size={15} />
                                         New Resume
                                     </button>
+
+                                    {/* Copy / Paste JSON */}
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyJson}
+                                        aria-live="polite"
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${copyState === "copied"
+                                                ? "bg-green-600 text-white"
+                                                : copyState === "error"
+                                                    ? "bg-red-600 text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                            }`}
+                                    >
+                                        {copyState === "copied" ? <Check size={15} /> : <Copy size={15} />}
+                                        {copyState === "copied"
+                                            ? "Copied!"
+                                            : copyState === "error"
+                                                ? "Copy failed, try again"
+                                                : "Copy JSON"}
+                                    </button>
+                                    {isEditingUnlocked && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowJsonModal(true)}
+                                            className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-1"
+                                        >
+                                            <ClipboardPaste size={15} />
+                                            Paste JSON
+                                        </button>
+                                    )}
                                     <ResumeSelectorModal
                                         open={showModal}
                                         onClose={() => {
@@ -2986,7 +3106,7 @@ function App() {
                                     {/* Save Button - Also lock this */}
 
                                     <button
-                                        onClick={handleSave}
+                                        onClick={() => handleSave()}
                                         className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md transition-colors font-medium ${isSaved
                                                 ? "bg-green-600 text-white"
                                                 : "bg-blue-600 text-white hover:bg-blue-700"
@@ -3887,6 +4007,21 @@ function App() {
                     </div>
                 </div>
             )}
+
+            {/* Paste JSON Modal */}
+            <ResumeJsonModal
+                open={showJsonModal}
+                onClose={() => setShowJsonModal(false)}
+                current={{
+                    data: resumeData,
+                    checkboxStates: currentCheckboxStates,
+                    sectionOrder,
+                    sectionTitles: sectionTitles || {},
+                    resumeId: resume_id || null,
+                }}
+                loadedName={loadedName}
+                onSave={handlePasteJsonSave}
+            />
 
             {/* New Resume Modal */}
             {showNewResumeModal && (
