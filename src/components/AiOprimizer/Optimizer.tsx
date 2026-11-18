@@ -1785,6 +1785,7 @@ function App() {
         try {
             await saveResume();
         } catch (error) {
+            setIsSaved(false);
             console.error("Error saving resume:", error);
             alert("Error saving resume. Please try again.");
         }
