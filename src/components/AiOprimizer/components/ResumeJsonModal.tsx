@@ -221,7 +221,7 @@ export default function ResumeJsonModal({
                     <button
                         type="button"
                         onClick={handleSave}
-                        disabled={saving || !text.trim()}
+                        disabled={saving || !text.trim() || errors.length > 0}
                         className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <ClipboardPaste size={16} aria-hidden="true" />
