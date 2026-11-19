@@ -24,6 +24,7 @@ import { PreviewStore } from "./store/PreviewStore";
 import { Publications } from "./components/Publications";
 import Certifications, { CertificationItem } from "./components/Certifications";
 import { TherapeuticAreas } from "./components/TherapeuticAreas";
+import { describeAutoLink, type AutoLinkNotice } from "./utils/autoLink";
 import { CustomSectionEditor } from "./components/CustomSectionEditor";
 import { CustomSectionItem } from "./types/ResumeTypes";
 import { ResumePreviewMedical } from "./components/ResumePreviewMedical";
@@ -1675,6 +1676,12 @@ function App() {
         // setCurrentView("editor");
     };
     // --- Save ---
+    // Shown after a NEW resume is saved: whether it was linked to a dashboard client.
+    const [autoLinkNotice, setAutoLinkNotice] = useState<AutoLinkNotice | null>(null);
+    const autoLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        if (autoLinkTimerRef.current) clearTimeout(autoLinkTimerRef.current);
+    }, []);
     /**
      * Saves a resume to the backend. With no argument it saves what the editor
      * holds right now (the Save Resume button). Pass a snapshot to save data
@@ -1773,6 +1780,15 @@ function App() {
                 setResumeId(result.resume_id);
             }
             setLoadedName(name.trim());
+
+            // The backend only attempts a link when it created the resume, so
+            // autoLink is null for an ordinary re-save. Clear any older notice then.
+            const notice = describeAutoLink(result.autoLink);
+            setAutoLinkNotice(notice);
+            if (autoLinkTimerRef.current) clearTimeout(autoLinkTimerRef.current);
+            if (notice) {
+                autoLinkTimerRef.current = setTimeout(() => setAutoLinkNotice(null), 10000);
+            }
 
             setTimeout(() => {
                 setIsSaved(false);
@@ -3126,6 +3142,21 @@ function App() {
                                             after refresh
                                         </p>
                                     )}
+                                    <div role="status" aria-live="polite">
+                                        {autoLinkNotice && (
+                                            <p
+                                                className={`text-xs text-center rounded-md px-3 py-2 ${
+                                                    autoLinkNotice.tone === "success"
+                                                        ? "bg-green-50 text-green-800"
+                                                        : autoLinkNotice.tone === "warning"
+                                                            ? "bg-amber-50 text-amber-800"
+                                                            : "bg-gray-100 text-gray-700"
+                                                }`}
+                                            >
+                                                {autoLinkNotice.text}
+                                            </p>
+                                        )}
+                                    </div>
 
                                     {/* Admin-only Unlock Key Editor */}
                                     <AccessKeyEditor />
