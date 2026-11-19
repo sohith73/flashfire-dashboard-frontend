@@ -109,7 +109,7 @@ export const ResumePreviewMedical: React.FC<ResumePreviewProps> = ({
     showLeadership = true,
     showProjects = false,
     showPublications = false,
-    showCertifications = false,
+    showCertifications: showCertificationsProp,
     showTherapeuticAreas = false,
     showSummary = true,
     showPrintButtons = true,
@@ -118,6 +118,15 @@ export const ResumePreviewMedical: React.FC<ResumePreviewProps> = ({
     sectionTitles = {},
     onDownloadClick,
 }) => {
+    // Viewers that only know the saved job metadata (job card, Documents page)
+    // cannot pass this flag: it is not stored on the job. Certifications are
+    // operator-entered facts, so a resume that has any shows them. The resume
+    // builder passes its own toggle and keeps full control.
+    const showCertifications =
+        showCertificationsProp ??
+        (data.certifications || []).some(
+            (c) => (c.title && c.title.trim()) || (c.issuer && c.issuer.trim())
+        );
     // The top-toolbar "Download PDF" button is only useful on the /optimize/:jobId
     // route. Hide it in the portal (everywhere else).
     const isOptimizeRoute =
