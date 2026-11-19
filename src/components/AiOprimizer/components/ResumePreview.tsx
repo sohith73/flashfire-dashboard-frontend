@@ -154,7 +154,7 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({
     showProjects = false,
     showSummary = true,
     showPublications = false,
-    showCertifications = false,
+    showCertifications: showCertificationsProp,
     showChanges = false,
     changedFields = new Set(),
     onDownloadClick,
@@ -163,6 +163,15 @@ export const ResumePreview: React.FC<ResumePreviewProps> = ({
     sectionOrder = ["personalInfo", "summary", "workExperience", "projects", "leadership", "skills", "education", "publications", "certifications"],
     sectionTitles = {},
 }) => {
+    // Viewers that only know the saved job metadata (job card, Documents page)
+    // cannot pass this flag: it is not stored on the job. Certifications are
+    // operator-entered facts, so a resume that has any shows them. The resume
+    // builder passes its own toggle and keeps full control.
+    const showCertifications =
+        showCertificationsProp ??
+        (data.certifications || []).some(
+            (c) => (c.title && c.title.trim()) || (c.issuer && c.issuer.trim())
+        );
     // Resolve a heading: render the operator override uppercased, else the
     // hard-coded default. Trim guards against an accidental whitespace-only
     // override that would print as blank.
