@@ -9,6 +9,7 @@ import {
   Clock,
   Eye,
   Info,
+  FileX2,
   Loader2,
   Mail,
   RefreshCw,
@@ -91,6 +92,8 @@ interface ReminderConfig {
   clientName?: string;
   /** Forward inbox milestones to the client. Opt-in, off by default. */
   inboxAlertsEnabled?: boolean;
+  /** Move a job card to Rejected from a verified rejection mail. Off by default. */
+  mailAutoRejectEnabled?: boolean;
   paymentEmailOverride?: string;
   items?: ItemConfig[];
   history?: HistoryRow[];
@@ -448,6 +451,7 @@ export default function ClientReminders({
 
   const [saving, setSaving] = useState(false);
   const [savingInboxAlerts, setSavingInboxAlerts] = useState(false);
+  const [savingAutoReject, setSavingAutoReject] = useState(false);
 
   const [sendingKey, setSendingKey] = useState("");
   const [previewingKey, setPreviewingKey] = useState("");
@@ -519,6 +523,7 @@ export default function ClientReminders({
 
   const catalogue = useMemo(() => bundle?.catalogue || [], [bundle]);
   const inboxAlertsEnabled = bundle?.config?.inboxAlertsEnabled === true;
+  const autoRejectEnabled = bundle?.config?.mailAutoRejectEnabled === true;
   const hasPaymentEmail = Boolean((bundle?.resolvedPaymentEmail || "").trim());
   const dirty = baseline !== "" && baseline !== fingerprint(items);
   const paymentEmailDirty = paymentEmail.trim() !== (bundle?.resolvedPaymentEmail || "").trim();
@@ -568,6 +573,37 @@ export default function ClientReminders({
       toastUtils.error(err instanceof Error ? err.message : "Could not change inbox alerts");
     } finally {
       setSavingInboxAlerts(false);
+    }
+  };
+
+  /**
+   * Auto-reject from mail. Same save-on-click rule as inbox alerts, and it posts
+   * only this field. Off by default; the backend moves nothing for a client
+   * until an operator switches this on.
+   */
+  const handleToggleAutoReject = async (next: boolean) => {
+    if (savingAutoReject) return;
+    setSavingAutoReject(true);
+    try {
+      const data = await call<SaveResponse>("PUT", "", {
+        clientEmail,
+        mailAutoRejectEnabled: next,
+        updatedBy
+      });
+      const savedConfig = data.data?.config;
+      if (!data.success || !savedConfig) {
+        throw new Error(data.message || data.error || "Could not change auto-reject");
+      }
+      setBundle((prev) => (prev ? { ...prev, config: savedConfig } : prev));
+      toastUtils.success(
+        next
+          ? "Rejection mails now move this client's cards to Rejected"
+          : "Rejection mails no longer move this client's cards"
+      );
+    } catch (err) {
+      toastUtils.error(err instanceof Error ? err.message : "Could not change auto-reject");
+    } finally {
+      setSavingAutoReject(false);
     }
   };
 
@@ -872,6 +908,64 @@ export default function ClientReminders({
                       <span
                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                           inboxAlertsEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                        }`}
+                      />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Auto-reject from mail. Off by default, per client. */}
+              <div className="mt-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-gradient-to-br from-rose-50/60 to-white p-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                    <FileX2 className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-sm font-bold text-gray-900">Move rejected jobs from mail</h4>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-600">
+                        Off by default
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                      When the hourly inbox scan finds a real rejection mail that names exactly one of this
+                      client's applied or interviewing jobs, move that job to Rejected. The client gets no email.
+                    </p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+                      If the mail could match more than one job, or the job was moved in the meantime, nothing
+                      changes. A moved job shows "rejected by Mail" on its card.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2.5 sm:pt-1">
+                  <span
+                    className={`text-xs font-bold ${autoRejectEnabled ? "text-emerald-700" : "text-gray-500"}`}
+                  >
+                    {autoRejectEnabled ? "On" : "Off"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoRejectEnabled}
+                    aria-label={
+                      autoRejectEnabled
+                        ? "Rejection mails move this client's jobs to Rejected. Click to turn it off."
+                        : "Rejection mails do not move this client's jobs. Click to turn it on."
+                    }
+                    onClick={() => void handleToggleAutoReject(!autoRejectEnabled)}
+                    disabled={savingAutoReject}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      autoRejectEnabled ? "bg-emerald-500" : "bg-gray-300"
+                    }`}
+                  >
+                    {savingAutoReject ? (
+                      <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-white" />
+                    ) : (
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          autoRejectEnabled ? "translate-x-[22px]" : "translate-x-0.5"
                         }`}
                       />
                     )}
