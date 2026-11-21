@@ -115,12 +115,6 @@ const OperationsManagement = () => {
   const [whatsappUnlocked, setWhatsappUnlocked] = useState(opsToolsClient);
   const [showWhatsappSecretModal, setShowWhatsappSecretModal] = useState(false);
   const [whatsappSecretError, setWhatsappSecretError] = useState('');
-  const [remindersUnlocked, setRemindersUnlocked] = useState(opsToolsClient);
-  const [showRemindersSecretModal, setShowRemindersSecretModal] = useState(false);
-  const [remindersSecretError, setRemindersSecretError] = useState('');
-  // The reminders API is gated on x-ops-key server-side, so the key the operator
-  // typed to unlock the tab is kept in memory and replayed on every request.
-  const [remindersOpsKey, setRemindersOpsKey] = useState(opsToolsClient ? OPERATIONS_SECRET_KEY : '');
   const [emailGroups, setEmailGroups] = useState<{ id: string; name: string; category: string }[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<{ id: string; name: string; subject: string }[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -160,8 +154,6 @@ const OperationsManagement = () => {
     if (!opsToolsClient) return;
     setOperationsSessionUnlocked(true);
     setWhatsappUnlocked(true);
-    setRemindersUnlocked(true);
-    setRemindersOpsKey(OPERATIONS_SECRET_KEY);
   }, [opsToolsClient]);
 
   useEffect(() => {
@@ -1181,13 +1173,7 @@ const OperationsManagement = () => {
             )}
           </button>
           <button
-            onClick={() => {
-              if (!remindersUnlocked) {
-                setShowRemindersSecretModal(true);
-              } else {
-                setActiveSection("reminders");
-              }
-            }}
+            onClick={() => setActiveSection("reminders")}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
               activeSection === "reminders"
                 ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md"
@@ -1196,9 +1182,6 @@ const OperationsManagement = () => {
           >
             <BellRing className="w-4 h-4" />
             <span>Client Reminders</span>
-            {!remindersUnlocked && (
-              <Lock className="w-3 h-3 text-gray-500" />
-            )}
           </button>
         </div>
 
@@ -2444,37 +2427,17 @@ const OperationsManagement = () => {
           </div>
         )}
 
-        {activeSection === "reminders" && remindersUnlocked && (
+        {/* No second key: this whole panel only renders once Operations is
+            unlocked, so any operator can open Client Reminders. The API still
+            checks x-ops-key, which is the operations key. */}
+        {activeSection === "reminders" && (
           <ClientReminders
             apiBaseUrl={API_BASE_URL}
             clientEmail={userDetails?.email || ""}
             clientName={userDetails?.name || ""}
-            opsKey={remindersOpsKey}
+            opsKey={operationsOpsKey}
             updatedBy={operatorName || role || "operations"}
           />
-        )}
-
-        {activeSection === "reminders" && !remindersUnlocked && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12">
-            <div className="text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-violet-100 to-indigo-100 mb-6">
-                <Lock className="h-8 w-8 text-violet-600" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                Client Reminders Locked
-              </h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Please enter the secret key to configure recurring client reports
-              </p>
-              <button
-                onClick={() => setShowRemindersSecretModal(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-all shadow-md"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Unlock Client Reminders</span>
-              </button>
-            </div>
-          </div>
         )}
 
         {/* Auto-save indicator */}
@@ -2507,25 +2470,6 @@ const OperationsManagement = () => {
         error={whatsappSecretError}
       />
 
-      <SecretKeyModal
-        isOpen={showRemindersSecretModal}
-        onClose={() => {
-          setShowRemindersSecretModal(false);
-          setRemindersSecretError('');
-        }}
-        onConfirm={(secretKey) => {
-          if (secretKey !== OPERATIONS_SECRET_KEY) {
-            setRemindersSecretError("Incorrect secret key. Please try again.");
-            return;
-          }
-          setRemindersOpsKey(secretKey);
-          setRemindersUnlocked(true);
-          setShowRemindersSecretModal(false);
-          setRemindersSecretError('');
-          setActiveSection("reminders");
-        }}
-        error={remindersSecretError}
-      />
     </div>
   );
 };
