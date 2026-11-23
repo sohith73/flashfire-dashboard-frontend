@@ -7,6 +7,7 @@ import SecretKeyModal from "./SecretKeyModal";
 import { useOperationsStore, isOpsRole } from "../state_management/Operations";
 import AppPasswordConnect, { AppPasswordStatus } from "./AppPasswordConnect";
 import { isOpsToolsClient } from "../utils/opsToolsAccess";
+import ClaudeConnect from "./ClaudeConnect";
 import { DatePicker } from "./DatePicker";
 import { format, parse, isValid } from "date-fns";
 
@@ -1369,6 +1370,14 @@ export default function ProfilePage() {
                         onValueChange={(v) => setEditData({ ...editData, referredBy: v })}
                     />
                 </Card>
+
+                {/* Claude (MCP). The client's own key, so operators viewing the
+                    client never see it; the backend refuses them too. */}
+                {!isOperator && (
+                    <Card title="Connect to Claude">
+                        <ClaudeConnect />
+                    </Card>
+                )}
 
                 {/* Credentials */}
                 <Card title="Account Access Credentials">
