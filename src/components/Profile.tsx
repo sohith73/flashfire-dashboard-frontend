@@ -7,7 +7,8 @@ import SecretKeyModal from "./SecretKeyModal";
 import { useOperationsStore, isOpsRole } from "../state_management/Operations";
 import AppPasswordConnect, { AppPasswordStatus } from "./AppPasswordConnect";
 import { isOpsToolsClient } from "../utils/opsToolsAccess";
-import ClaudeConnect from "./ClaudeConnect";
+// Hidden for now; restore with the card below.
+// import ClaudeConnect from "./ClaudeConnect";
 import { DatePicker } from "./DatePicker";
 import { format, parse, isValid } from "date-fns";
 
@@ -1371,13 +1372,15 @@ export default function ProfilePage() {
                     />
                 </Card>
 
-                {/* Claude (MCP). The client's own key, so operators viewing the
-                    client never see it; the backend refuses them too. */}
+                {/* Claude (MCP) card, hidden for now. Uncomment this and the
+                    ClaudeConnect import to bring it back. The client's own key,
+                    so operators viewing the client never see it.
                 {!isOperator && (
                     <Card title="Connect to Claude">
                         <ClaudeConnect />
                     </Card>
                 )}
+                */}
 
                 {/* Credentials */}
                 <Card title="Account Access Credentials">
